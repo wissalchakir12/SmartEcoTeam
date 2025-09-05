@@ -1,55 +1,36 @@
-# Projet Multi-Agent d’Analyse Économique avec Agno & Mistral
+# 📄 Agent PDF Intelligent avec Mistral et LangChain
 
-## Description
-
-Ce projet implémente un système multi-agent utilisant la librairie **Agno** et le modèle **Mistral (mistral-medium)** pour automatiser l’analyse de l’actualité économique.
-
-L’objectif est de :
-
-- Collecter automatiquement les derniers articles économiques via un flux RSS (Reuters).  
-- Résumer chaque article pour extraire l’essentiel.  
-- Analyser les résumés pour détecter les tendances et risques économiques.  
-- Proposer des recommandations stratégiques basées sur ces analyses.
-
-Chaque étape est réalisée par un agent spécialisé, tous coordonnés au sein d’une équipe (Team) Agno.
+Ce projet permet de poser des **questions directement à un PDF** en utilisant un agent intelligent.  
+Il combine la puissance de **LangChain**, **FAISS**, **MistralChat via Agno**, et **Rich** pour créer une interface interactive dans le terminal.
 
 ---
 
-## Architecture
+## ⚙️ Fonctionnalités
 
-Le système est composé des agents suivants :
-
-- **RSSCollectorAgent** : collecte les articles économiques.  
-- **SummarizerAgent** : génère un résumé concis des articles.  
-- **AnalyzerAgent** : analyse les résumés pour détecter tendances et risques.  
-- **RecommenderAgent** : propose des recommandations stratégiques basées sur l’analyse.
-
----
-
-## Technologies utilisées
-
-- **Python 3.8+**  
-- **Agno** (librairie de gestion multi-agent)  
-- **Mistral** (modèle de langage via API, modèle `mistral-medium`)  
-- **Feedparser** (pour lire les flux RSS)  
-- **dotenv** (gestion sécurisée des clés API)  
+- Charger un fichier PDF et extraire son texte  
+- Découper le texte en **chunks** pour un traitement efficace  
+- Créer un **vector store** avec embeddings pour la recherche sémantique  
+- Poser des questions au PDF et obtenir des réponses contextualisées  
+- Interface console **colorée et interactive** grâce à **Rich**
 
 ---
 
-## Images
+## 🛠 Technologies utilisées
 
-### Image 1 : Request
-
-![Request](./image1.PNG)
+- **Python 3.11+**  
+- **PyPDF2** pour lire les fichiers PDF  
+- **LangChain** pour la découpe et vectorisation du texte  
+- **FAISS** pour la recherche sémantique  
+- **HuggingFace Embeddings** (`sentence-transformers/all-mpnet-base-v2`)  
+- **Agno + MistralChat** pour l’agent intelligent  
+- **Rich** pour l’affichage interactif dans le terminal  
+- **python-dotenv** pour gérer les variables d’environnement (clé API Mistral)
 
 ---
 
-### Image 2 : Response
+## 🔧 Installation et utilisation
 
-![Response](./image2.PNG)
-
-
-## Prérequis
-
-- Clé API Mistral valide (stockée dans `.env` sous `MISTRAL_API_KEY`)  
-
+1. **Cloner le dépôt :**  
+```bash
+git clone https://github.com/ton-utilisateur/Nouridouine.mt.git
+cd Nouridouine.mt

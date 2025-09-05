@@ -1,113 +1,94 @@
-
-
 import os
-import feedparser
 from dotenv import load_dotenv
+from PyPDF2 import PdfReader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.vectorstores import FAISS
+from langchain.embeddings import HuggingFaceEmbeddings
 from agno.agent import Agent
 from agno.models.mistral import MistralChat
-from agno.team.team import Team
+from rich.console import Console
+from rich.panel import Panel
 
-load_dotenv()
-api_key = os.getenv("MISTRAL_API_KEY")
-if not api_key:
-    raise ValueError("⚠️ MISTRAL_API_KEY non défini dans .env")
+# ----------------------------
+# 1️⃣ Initialisation
+# ----------------------------
+load_dotenv()  # Assure-toi que .env contient MISTRAL_API_KEY
+console = Console()
 
-RSS_FEED_URL = "http://feeds.reuters.com/reuters/businessNews"
+# ----------------------------
+# 2️⃣ Charger le PDF
+# ----------------------------
+def load_pdf(pdf_path: str) -> str:
+    reader = PdfReader(pdf_path)
+    text = ""
+    for page in reader.pages:
+        page_text = page.extract_text()
+        if page_text:
+            text += page_text + "\n"
+    return text
 
-class RSSCollectorAgent(Agent):
-    def __init__(self):
-        super().__init__()
-        self.name = "RSSCollector"
-        self.model = MistralChat(id="mistral-medium", api_key=api_key)
+# ----------------------------
+# 3️⃣ Découper le texte en chunks
+# ----------------------------
+def split_text(text: str):
+    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+    return [chunk for chunk in splitter.split_text(text) if chunk.strip()]
 
-    def act(self, ctx):
-        feed = feedparser.parse(RSS_FEED_URL)
-        entries = feed.entries[:5]  # prendre les 5 derniers articles
-        for entry in entries:
-            title = entry.title
-            summary = entry.summary
-            content = f"{title}\n{summary}"
-            print(f"[Collector] Article collecté: {title}")
-            ctx.send("SummarizerAgent", {"content": content})
+# ----------------------------
+# 4️⃣ Créer le vector store avec embeddingswg
+# ----------------------------
+def create_vectorstore(chunks):
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
+    vectorstore = FAISS.from_texts(chunks, embeddings)
+    return vectorstore
 
-class SummarizerAgent(Agent):
-    def __init__(self):
-        super().__init__()
-        self.name = "SummarizerAgent"
-        self.model = MistralChat(id="mistral-medium", api_key=api_key)
+# ----------------------------
+# 5️⃣ Créer l'agent et lui donner accès au vector store
+# ----------------------------
+def create_agent(vectorstore):
+    model = MistralChat()
+    agent = Agent(model=model)
+    agent.add_to_knowledge(query="PDF", result={"vectorstore": vectorstore})
+    return agent
 
-    def act(self, ctx):
-        msg = ctx.receive()
-        if msg:
-            content = msg.get("content", "")
-            prompt = [
-                {"role": "system", "content": "Tu es un assistant qui fait un résumé concis d'un article économique."},
-                {"role": "user", "content": f"Résume ce contenu : {content}"}
-            ]
-            summary = self.model.chat(prompt)
-            print(f"[Summarizer] Résumé: {summary}")
-            ctx.send("AnalyzerAgent", {"summary": summary})
+# ----------------------------
+# 6️⃣ Fonction principale
+# ----------------------------
+def main():
+    pdf_path = "a.pdf"  # Remplace par ton PDF
+    text = load_pdf(pdf_path)
+    console.print(f"[green][DEBUG][/green] PDF loaded, total characters: {len(text)}")
 
-class AnalyzerAgent(Agent):
-    def __init__(self):
-        super().__init__()
-        self.name = "AnalyzerAgent"
-        self.model = MistralChat(id="mistral-medium", api_key=api_key)
+    chunks = split_text(text)
+    console.print(f"[green][DEBUG][/green] PDF split into {len(chunks)} chunks")
 
-    def act(self, ctx):
-        msg = ctx.receive()
-        if msg:
-            summary = msg.get("summary", "")
-            prompt = [
-                {"role": "system", "content": "Tu es un analyste économique qui détecte tendances et risques."},
-                {"role": "user", "content": f"Analyse ce résumé et donne tendances et risques : {summary}"}
-            ]
-            analysis = self.model.chat(prompt)
-            print(f"[Analyzer] Analyse: {analysis}")
-            ctx.send("RecommenderAgent", {"analysis": analysis})
+    vectorstore = create_vectorstore(chunks)
+    agent = create_agent(vectorstore)
 
-class RecommenderAgent(Agent):
-    def __init__(self):
-        super().__init__()
-        self.name = "RecommenderAgent"
-        self.model = MistralChat(id="mistral-medium", api_key=api_key)
-        self.recommendations = []
+    console.print("[bold green]Agent prêt ! Pose tes questions (tape 'exit' pour quitter)[/bold green]\n")
 
-    def act(self, ctx):
-        msg = ctx.receive()
-        if msg:
-            analysis = msg.get("analysis", "")
-            prompt = [
-                {"role": "system", "content": "Tu es un expert qui propose des recommandations stratégiques basées sur une analyse économique."},
-                {"role": "user", "content": f"Propose des recommandations basées sur cette analyse : {analysis}"}
-            ]
-            recommendation = self.model.chat(prompt)
-            print(f"[Recommender] Recommandation: {recommendation}")
-            self.recommendations.append(recommendation)
-            # Optionnel : ici tu peux stocker ou envoyer le rapport final
+    while True:
+        query = console.input("[bold yellow]Question:[/bold yellow] ")
+        if query.lower() == "exit":
+            break
 
-team = Team(
-    name="EconomicNewsAnalysis",
-    mode="coordinate",
-    model=MistralChat(id="mistral-medium", api_key=api_key),
-    members=[
-        RSSCollectorAgent(),
-        SummarizerAgent(),
-        AnalyzerAgent(),
-        RecommenderAgent(),
-    ],
-    instructions=[
-        "Collaborez pour collecter, résumer, analyser et recommander sur les articles économiques.",
-        "Présentez les résultats de façon claire et concise."
-    ],
-    show_members_responses=False,
-    add_datetime_to_instructions=True,
-)
+        # Récupérer les chunks pertinents depuis FAISS
+        docs = vectorstore.similarity_search(query, k=3)
+        context_text = " ".join([doc.page_content for doc in docs])
 
+        # Lancer l'agent avec le contexte
+        response = agent.run(
+            f"Using the following text from the PDF, answer the question:\n{context_text}\nQuestion: {query}"
+        )
+
+        # Affichage formaté avec Rich
+        if hasattr(response, "content") and response.content:
+            console.print(Panel(response.content, title="Réponse", border_style="cyan", expand=False))
+        else:
+            console.print(Panel(str(response), title="Réponse", border_style="red", expand=False))
+
+# ----------------------------
+# 7️⃣ Lancer le script
+# ----------------------------
 if __name__ == "__main__":
-    team.print_response(
-        "Lancez l'analyse des derniers articles économiques.",
-        stream=False,
-        show_full_reasoning=False,
-        stream_intermediate_steps=False,
-    ) 
+    main()
